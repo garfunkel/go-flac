@@ -4,11 +4,10 @@ import (
 	"os"
 	"bytes"
 	"strings"
-	"log"
-	"fmt"
 	"errors"
 	"encoding/binary"
 	"github.com/garfunkel/go-bitbuffer"
+	"crypto/md5"
 )
 
 const (
@@ -61,6 +60,20 @@ type SeekPoint struct {
 	NumSamples uint16
 }
 
+type CueSheetTrackIndex struct {
+	Offset uint64
+	IndexNumber uint8
+}
+
+type CueSheetTrack struct {
+	Offset uint64
+	Track uint8
+	ISRC string
+	IsAudio bool
+	PreEmphasis bool
+	CueSheetTrackIndices []CueSheetTrackIndex
+}
+
 type IFLACMetadataBlock interface {
 	parse(*os.File) error
 	isLast() bool
@@ -110,6 +123,10 @@ type FLACMetadataBlockVorbisComment struct {
 
 type FLACMetadataBlockCueSheet struct {
 	FLACMetadataBlock
+	MediaCatalogNumber string
+	NumLeadInSamples uint64
+	IsCD bool
+	CueSheetTracks []CueSheetTrack
 }
 
 type FLACMetadataBlockPicture struct {
@@ -122,6 +139,7 @@ type FLACMetadataBlockPicture struct {
 	ColourDepth uint32
 	NumColours uint32
 	Picture []byte
+	PictureMD5 []byte
 }
 
 type FLACMetadataBlockReserved struct {
@@ -270,6 +288,55 @@ func (block *FLACMetadataBlockCueSheet) parse(handle *os.File) (err error) {
 
 	_, err = handle.Read(data)
 
+	buffer := &block.FLACMetadataBlock.FLAC.buffer
+
+	buffer.Feed(data)
+
+	block.MediaCatalogNumber, err = buffer.ReadString(128 * 8)
+	block.NumLeadInSamples, err = buffer.ReadUint64(64)
+	
+	isCD, err := buffer.ReadUint8(1)
+
+	block.IsCD = isCD != 0
+
+	_, err = buffer.Read(7 + 258 * 8)
+
+	numTracks, err := buffer.ReadUint8(8)
+
+	for trackIndex := uint8(0); trackIndex < numTracks; trackIndex++ {
+		var flag uint8
+		var numIndices uint8
+		track := CueSheetTrack{}
+
+		track.Offset, err = buffer.ReadUint64(64)
+		track.Track, err = buffer.ReadUint8(8)
+		track.ISRC, err = buffer.ReadString(12 * 8)
+
+		flag, err = buffer.ReadUint8(1)
+
+		track.IsAudio = flag == 0
+
+		flag, err = buffer.ReadUint8(1)
+
+		track.PreEmphasis = flag != 0
+
+		_, err = buffer.Read(6 + 13 * 8)
+
+		numIndices, err = buffer.ReadUint8(8)
+
+		for indexIndex := uint8(0); indexIndex < numIndices; indexIndex++ {
+			index := CueSheetTrackIndex{}
+
+			index.Offset, err = buffer.ReadUint64(64)
+			index.IndexNumber, err = buffer.ReadUint8(8)
+			_, err = buffer.Read(3 * 8)
+
+			track.CueSheetTrackIndices = append(track.CueSheetTrackIndices, index)
+		}
+
+		block.CueSheetTracks = append(block.CueSheetTracks, track)
+	}
+
 	return
 }
 
@@ -285,6 +352,28 @@ func (block *FLACMetadataBlockPicture) parse(handle *os.File) (err error) {
 	buffer := &block.FLACMetadataBlock.FLAC.buffer
 
 	buffer.Feed(data)
+
+	blockType, err := buffer.ReadUint32(32)
+	block.Type = PictureType(blockType)
+
+	mimeLength, err := buffer.ReadUint64(32)
+	block.MIMEType, err = buffer.ReadString(mimeLength * 8)
+
+	descLength, err := buffer.ReadUint64(32)
+	block.Description, err = buffer.ReadString(descLength * 8)
+
+	block.Width, err = buffer.ReadUint32(32)
+	block.Height, err = buffer.ReadUint32(32)
+	block.ColourDepth, err = buffer.ReadUint32(32)
+	block.NumColours, err = buffer.ReadUint32(32)
+
+	hasher := md5.New()
+	picLength, err := buffer.ReadUint64(32)
+	block.Picture, err = buffer.Read(picLength * 8)
+
+	hasher.Write(block.Picture)
+
+	block.PictureMD5 = hasher.Sum(nil)
 
 	return
 }
@@ -429,7 +518,6 @@ func (flac *FLAC) parseStream(handle *os.File) (err error) {
 		flac.MetadataBlocks = append(flac.MetadataBlocks, iBlock)
 
 		last = iBlock.isLast()
-		fmt.Printf("%+v\n", iBlock)
 	}
 
 	return
@@ -454,20 +542,3 @@ func Parse(path string) (flac *FLAC, err error) {
 
 	return
 }
-
-func main() {
-	flac, err := Parse("/home/simon/Downloads/tone24bit.flac")
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println(flac)
-	fmt.Printf("%+v\n", flac.StreamInfo)
-}
-
-
-
-
-
-
