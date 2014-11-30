@@ -273,7 +273,7 @@ func (block *FLACMetadataBlockApplication) parse(handle *os.File) (err error) {
 		return
 	}
 
-	buffer := &block.FLACMetadataBlock.FLAC.buffer
+	buffer := block.FLACMetadataBlock.FLAC.buffer
 
 	buffer.Feed(data)
 	block.AppID, err = buffer.ReadString(32)
@@ -300,7 +300,7 @@ func (block *FLACMetadataBlockSeekTable) parse(handle *os.File) (err error) {
 		return
 	}
 
-	buffer := &block.FLACMetadataBlock.FLAC.buffer
+	buffer := block.FLACMetadataBlock.FLAC.buffer
 
 	buffer.Feed(data)
 
@@ -413,7 +413,7 @@ func (block *FLACMetadataBlockCueSheet) parse(handle *os.File) (err error) {
 		return
 	}
 
-	buffer := &block.FLACMetadataBlock.FLAC.buffer
+	buffer := block.FLACMetadataBlock.FLAC.buffer
 
 	buffer.Feed(data)
 
@@ -543,7 +543,7 @@ func (block *FLACMetadataBlockPicture) parse(handle *os.File) (err error) {
 		return
 	}
 
-	buffer := &block.FLACMetadataBlock.FLAC.buffer
+	buffer := block.FLACMetadataBlock.FLAC.buffer
 
 	buffer.Feed(data)
 
