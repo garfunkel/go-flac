@@ -6,16 +6,19 @@ import (
 	"strings"
 	"errors"
 	"encoding/binary"
-	"github.com/garfunkel/go-bitbuffer"
 	"crypto/md5"
+	"github.com/garfunkel/go-bitbuffer"
 )
 
 const (
+	// FLACMarker is the standard FLAC identification string.
 	FLACMarker = "fLaC"
 )
 
+// BlockType is the type used to identify the class of each metadata block.
 type BlockType uint
 
+// Enum indicating the type of each metadata block.
 const (
 	StreamInfo BlockType = iota
 	Padding
@@ -28,8 +31,10 @@ const (
 	Invalid = 127
 )
 
+// PictureType is the type used to indicate picture format.
 type PictureType uint
 
+// Enum indicating the type of picture used in a metadata block.
 const (
 	Other PictureType = iota
 	FileIcon
@@ -54,17 +59,20 @@ const (
 	PublisherLogo
 )
 
+// SeekPoint is a structure for storing the points at which a stream can be seeked.
 type SeekPoint struct {
 	Sample uint64
 	ByteOffset uint64
 	NumSamples uint16
 }
 
+// CueSheetTrackIndex is a structure for each cue index.
 type CueSheetTrackIndex struct {
 	Offset uint64
 	IndexNumber uint8
 }
 
+// CueSheetTrack is a structure representing a cuesheet track.
 type CueSheetTrack struct {
 	Offset uint64
 	Track uint8
@@ -74,11 +82,13 @@ type CueSheetTrack struct {
 	CueSheetTrackIndices []CueSheetTrackIndex
 }
 
+// IFLACMetadataBlock is an interface for common behaviour of a metadata block.
 type IFLACMetadataBlock interface {
 	parse(*os.File) error
 	isLast() bool
 }
 
+// FLACMetadataBlock sets out basic attributes for all metadata blocks.
 type FLACMetadataBlock struct {
 	FLAC *FLAC
 	Last bool
@@ -86,6 +96,7 @@ type FLACMetadataBlock struct {
 	DataLength uint32
 }
 
+// FLACMetadataBlockStreamInfo sets out the structure for stream information.
 type FLACMetadataBlockStreamInfo struct {
 	FLACMetadataBlock
 	MinBlockSize uint16
@@ -99,28 +110,33 @@ type FLACMetadataBlockStreamInfo struct {
 	UnencodedMD5 []byte
 }
 
+// FLACMetadataBlockPadding represents padding metadata blocks.
 type FLACMetadataBlockPadding struct {
 	FLACMetadataBlock
 	NumBytes uint32
 }
 
+// FLACMetadataBlockApplication represents application/binary metadata blocks.
 type FLACMetadataBlockApplication struct {
 	FLACMetadataBlock
-	AppId string
+	AppID string
 	AppData []byte
 }
 
+// FLACMetadataBlockSeekTable represents the seek metadata block for a stream.
 type FLACMetadataBlockSeekTable struct {
 	FLACMetadataBlock
 	SeekPoints []SeekPoint
 }
 
+// FLACMetadataBlockVorbisComment represents s tagging/vorbis comment metadata block.
 type FLACMetadataBlockVorbisComment struct {
 	FLACMetadataBlock
 	VendorString string
 	Comments map[string][]string
 }
 
+// FLACMetadataBlockCueSheet sets out the structure of a cuesheet metadata block.
 type FLACMetadataBlockCueSheet struct {
 	FLACMetadataBlock
 	MediaCatalogNumber string
@@ -129,6 +145,7 @@ type FLACMetadataBlockCueSheet struct {
 	CueSheetTracks []CueSheetTrack
 }
 
+// FLACMetadataBlockPicture sets out the structure used for a picture metadata block.
 type FLACMetadataBlockPicture struct {
 	FLACMetadataBlock
 	Type PictureType
@@ -142,10 +159,12 @@ type FLACMetadataBlockPicture struct {
 	PictureMD5 []byte
 }
 
+// FLACMetadataBlockReserved is an unused/reserved metadata block.
 type FLACMetadataBlockReserved struct {
 	FLACMetadataBlock
 }
 
+// FLAC is the primary structure for operations on FLAC files.
 type FLAC struct {
 	buffer *bitbuffer.BitBuffer
 	Marker string
@@ -158,22 +177,66 @@ func (block *FLACMetadataBlockStreamInfo) parse(handle *os.File) (err error) {
 
 	_, err = handle.Read(blockData)
 
+	if err != nil {
+		return
+	}
+
 	block.FLACMetadataBlock.FLAC.buffer.Feed(blockData)
 	data, err := block.FLACMetadataBlock.FLAC.buffer.ReadUint64(16)
+
+	if err != nil {
+		return
+	}
+
 	block.MinBlockSize = uint16(data)
 	data, err = block.FLACMetadataBlock.FLAC.buffer.ReadUint64(16)
+
+	if err != nil {
+		return
+	}
+
 	block.MaxBlockSize = uint16(data)
 	data, err = block.FLACMetadataBlock.FLAC.buffer.ReadUint64(24)
+
+	if err != nil {
+		return
+	}
+
 	block.MinFrameSize = uint32(data)
 	data, err = block.FLACMetadataBlock.FLAC.buffer.ReadUint64(24)
+
+	if err != nil {
+		return
+	}
+
 	block.MaxFrameSize = uint32(data)
 	data, err = block.FLACMetadataBlock.FLAC.buffer.ReadUint64(20)
+
+	if err != nil {
+		return
+	}
+
 	block.SampleRate = uint32(data)
 	data, err = block.FLACMetadataBlock.FLAC.buffer.ReadUint64(3)
+
+	if err != nil {
+		return
+	}
+
 	block.Channels = uint8(data) + 1
 	data, err = block.FLACMetadataBlock.FLAC.buffer.ReadUint64(5)
+
+	if err != nil {
+		return
+	}
+
 	block.BitsPerSample = uint8(data) + 1
 	block.NumSamples, err = block.FLACMetadataBlock.FLAC.buffer.ReadUint64(36)
+
+	if err != nil {
+		return
+	}
+
 	block.UnencodedMD5, err = block.FLACMetadataBlock.FLAC.buffer.Read(128)
 
 	return
@@ -187,6 +250,10 @@ func (block *FLACMetadataBlockPadding) parse(handle *os.File) (err error) {
 	blockData := make([]byte, block.FLACMetadataBlock.DataLength)
 
 	_, err = handle.Read(blockData)
+
+	if err != nil {
+		return
+	}
 
 	block.NumBytes = block.FLACMetadataBlock.DataLength
 
@@ -202,10 +269,19 @@ func (block *FLACMetadataBlockApplication) parse(handle *os.File) (err error) {
 
 	_, err = handle.Read(data)
 
+	if err != nil {
+		return
+	}
+
 	buffer := &block.FLACMetadataBlock.FLAC.buffer
 
 	buffer.Feed(data)
-	block.AppId, err = buffer.ReadString(32)
+	block.AppID, err = buffer.ReadString(32)
+
+	if err != nil {
+		return
+	}
+
 	block.AppData, err = buffer.Read(uint64(block.FLACMetadataBlock.DataLength * 8 - 32))
 
 	return
@@ -220,21 +296,37 @@ func (block *FLACMetadataBlockSeekTable) parse(handle *os.File) (err error) {
 
 	_, err = handle.Read(data)
 
+	if err != nil {
+		return
+	}
+
 	buffer := &block.FLACMetadataBlock.FLAC.buffer
 
 	buffer.Feed(data)
 
 	for index := 0; index < len(data) / 18; index++ {
 		seekPoint := SeekPoint{}
-
-		seekPoint.Sample, err = buffer.ReadUint64(64)
-		seekPoint.ByteOffset, err = buffer.ReadUint64(64)
-
 		var numSamples uint64
 
-		numSamples, err = buffer.ReadUint64(16)
-		seekPoint.NumSamples = uint16(numSamples)
+		seekPoint.Sample, err = buffer.ReadUint64(64)
 
+		if err != nil {
+			return
+		}
+
+		seekPoint.ByteOffset, err = buffer.ReadUint64(64)
+
+		if err != nil {
+			return
+		}
+
+		numSamples, err = buffer.ReadUint64(16)
+
+		if err != nil {
+			return
+		}
+
+		seekPoint.NumSamples = uint16(numSamples)
 		block.SeekPoints = append(block.SeekPoints, seekPoint)
 	}
 
@@ -250,13 +342,32 @@ func (block *FLACMetadataBlockVorbisComment) parse(handle *os.File) (err error) 
 
 	_, err = handle.Read(data)
 
+	if err != nil {
+		return
+	}
+
 	buffer := bitbuffer.NewBitBuffer(binary.LittleEndian)
 
 	buffer.Feed(data)
 
 	length, err := buffer.ReadUint64(32)
+
+	if err != nil {
+		return
+	}
+
 	block.VendorString, err = buffer.ReadString(length * 8)
+
+	if err != nil {
+		return
+	}
+
 	length, err = buffer.ReadUint64(32)
+
+	if err != nil {
+		return
+	}
+
 	var commentLength uint64
 	var comment string
 
@@ -264,7 +375,17 @@ func (block *FLACMetadataBlockVorbisComment) parse(handle *os.File) (err error) 
 
 	for commentIndex := 0; commentIndex < int(length); commentIndex++ {
 		commentLength, err = buffer.ReadUint64(32)
+
+		if err != nil {
+			return
+		}
+
 		comment, err = buffer.ReadString(commentLength * 8)
+
+		if err != nil {
+			return
+		}
+
 		commentFields := strings.SplitN(comment, "=", 2)
 		
 		if len(commentFields) != 2 {
@@ -288,20 +409,45 @@ func (block *FLACMetadataBlockCueSheet) parse(handle *os.File) (err error) {
 
 	_, err = handle.Read(data)
 
+	if err != nil {
+		return
+	}
+
 	buffer := &block.FLACMetadataBlock.FLAC.buffer
 
 	buffer.Feed(data)
 
 	block.MediaCatalogNumber, err = buffer.ReadString(128 * 8)
+
+	if err != nil {
+		return
+	}
+
 	block.NumLeadInSamples, err = buffer.ReadUint64(64)
 	
+	if err != nil {
+		return
+	}
+
 	isCD, err := buffer.ReadUint8(1)
+
+	if err != nil {
+		return
+	}
 
 	block.IsCD = isCD != 0
 
 	_, err = buffer.Read(7 + 258 * 8)
 
+	if err != nil {
+		return
+	}
+
 	numTracks, err := buffer.ReadUint8(8)
+
+	if err != nil {
+		return
+	}
 
 	for trackIndex := uint8(0); trackIndex < numTracks; trackIndex++ {
 		var flag uint8
@@ -309,27 +455,71 @@ func (block *FLACMetadataBlockCueSheet) parse(handle *os.File) (err error) {
 		track := CueSheetTrack{}
 
 		track.Offset, err = buffer.ReadUint64(64)
+
+		if err != nil {
+			return
+		}
+
 		track.Track, err = buffer.ReadUint8(8)
+
+		if err != nil {
+			return
+		}
+
 		track.ISRC, err = buffer.ReadString(12 * 8)
 
+		if err != nil {
+			return
+		}
+
 		flag, err = buffer.ReadUint8(1)
+
+		if err != nil {
+			return
+		}
 
 		track.IsAudio = flag == 0
 
 		flag, err = buffer.ReadUint8(1)
 
+		if err != nil {
+			return
+		}
+
 		track.PreEmphasis = flag != 0
 
 		_, err = buffer.Read(6 + 13 * 8)
 
+		if err != nil {
+			return
+		}
+
 		numIndices, err = buffer.ReadUint8(8)
+
+		if err != nil {
+			return
+		}
 
 		for indexIndex := uint8(0); indexIndex < numIndices; indexIndex++ {
 			index := CueSheetTrackIndex{}
 
 			index.Offset, err = buffer.ReadUint64(64)
+
+			if err != nil {
+				return
+			}
+
 			index.IndexNumber, err = buffer.ReadUint8(8)
+
+			if err != nil {
+				return
+			}
+
 			_, err = buffer.Read(3 * 8)
+
+			if err != nil {
+				return
+			}
 
 			track.CueSheetTrackIndices = append(track.CueSheetTrackIndices, index)
 		}
@@ -349,29 +539,88 @@ func (block *FLACMetadataBlockPicture) parse(handle *os.File) (err error) {
 
 	_, err = handle.Read(data)
 
+	if err != nil {
+		return
+	}
+
 	buffer := &block.FLACMetadataBlock.FLAC.buffer
 
 	buffer.Feed(data)
 
 	blockType, err := buffer.ReadUint32(32)
+
+	if err != nil {
+		return
+	}
+
 	block.Type = PictureType(blockType)
 
 	mimeLength, err := buffer.ReadUint64(32)
+
+	if err != nil {
+		return
+	}
+
 	block.MIMEType, err = buffer.ReadString(mimeLength * 8)
 
+	if err != nil {
+		return
+	}
+
 	descLength, err := buffer.ReadUint64(32)
+
+	if err != nil {
+		return
+	}
+
 	block.Description, err = buffer.ReadString(descLength * 8)
 
+	if err != nil {
+		return
+	}
+
 	block.Width, err = buffer.ReadUint32(32)
+
+	if err != nil {
+		return
+	}
+
 	block.Height, err = buffer.ReadUint32(32)
+
+	if err != nil {
+		return
+	}
+
 	block.ColourDepth, err = buffer.ReadUint32(32)
+
+	if err != nil {
+		return
+	}
+
 	block.NumColours, err = buffer.ReadUint32(32)
+
+	if err != nil {
+		return
+	}
 
 	hasher := md5.New()
 	picLength, err := buffer.ReadUint64(32)
+
+	if err != nil {
+		return
+	}
+
 	block.Picture, err = buffer.Read(picLength * 8)
 
-	hasher.Write(block.Picture)
+	if err != nil {
+		return
+	}
+
+	_, err = hasher.Write(block.Picture)
+
+	if err != nil {
+		return
+	}
 
 	block.PictureMD5 = hasher.Sum(nil)
 
@@ -469,13 +718,17 @@ func (flac *FLAC) parseMetadataBlock(handle *os.File) (block IFLACMetadataBlock,
 			}
 	}
 
-	block.parse(handle)
+	err = block.parse(handle)
 
 	return
 }
 
 func (flac *FLAC) parseStreamInfo(handle *os.File) (err error) {
 	streamInfo, err := flac.parseMetadataBlock(handle)
+
+	if err != nil {
+		return
+	}
 
 	flac.StreamInfo = streamInfo.(*FLACMetadataBlockStreamInfo)
 
@@ -516,13 +769,13 @@ func (flac *FLAC) parseStream(handle *os.File) (err error) {
 		}
 
 		flac.MetadataBlocks = append(flac.MetadataBlocks, iBlock)
-
 		last = iBlock.isLast()
 	}
 
 	return
 }
 
+// Parse is the primary method for reading in a FLAC file and creating a handle.
 func Parse(path string) (flac *FLAC, err error) {
 	handle, err := os.Open(path)
 
@@ -535,10 +788,6 @@ func Parse(path string) (flac *FLAC, err error) {
 	}
 
 	err = flac.parseStream(handle)
-
-	if err != nil {
-		return
-	}
 
 	return
 }

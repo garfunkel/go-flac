@@ -82,7 +82,7 @@ func (suite *FLACTestSuite) TestFLACMetadataBlockApplication() {
 		suite.assert.False(block.FLACMetadataBlock.Last)
 		suite.assert.Equal(Application, block.FLACMetadataBlock.Type)
 		suite.assert.Equal(8, block.FLACMetadataBlock.DataLength)
-		suite.assert.Equal("ATCH", block.AppId)
+		suite.assert.Equal("ATCH", block.AppID)
 		suite.assert.Equal("C@K3", string(block.AppData))
 	}
 
